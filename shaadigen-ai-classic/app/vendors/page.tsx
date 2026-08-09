@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useBudget } from "@/components/budget-context";
 import { ModuleHeader } from "@/components/layout/module-header";
 import { PageContainer } from "@/components/layout/page-container";
@@ -14,25 +14,45 @@ import {
   CATEGORY_LABELS,
   VENDOR_CATEGORIES,
 } from "@/lib/constants/vendors";
-import { VENDORS } from "@/lib/mock-data";
 import { formatINR } from "@/lib/utils";
-import { vendorAllocation } from "@/lib/vendors/allocation";
+import { matchVendors } from "@/lib/vendors/api";
 import type { Vendor, VendorCategory } from "@/types/wedding";
 
 export default function VendorsPage() {
   const { budget, setBudget } = useBudget();
   const [category, setCategory] = useState<VendorCategory>("Photographer");
   const [negotiating, setNegotiating] = useState<Vendor | null>(null);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = useMemo(
-    () =>
-      VENDORS.filter(
-        (v) =>
-          v.category === category &&
-          v.priceRange.min <= vendorAllocation(v, budget),
-      ),
-    [category, budget],
-  );
+  useEffect(() => {
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const matched = await matchVendors({ budget, category, guests: 300 });
+        if (!cancelled) setVendors(matched);
+      } catch (err) {
+        if (!cancelled) {
+          setVendors([]);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Could not load vendors from the API",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [budget, category]);
 
   return (
     <PageContainer>
@@ -70,18 +90,34 @@ export default function VendorsPage() {
         />
       </div>
 
-      <section className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((vendor, i) => (
-          <VendorCard
-            key={vendor.id}
-            vendor={vendor}
-            onNegotiate={setNegotiating}
-            animationDelayMs={i * 60}
-          />
-        ))}
-      </section>
+      {loading ? (
+        <p className="mt-8 text-center text-sm text-stone-500">
+          Matching vendors to your budget…
+        </p>
+      ) : null}
 
-      {filtered.length === 0 ? (
+      {error ? (
+        <EmptyState
+          emoji="⚠️"
+          title="Backend unavailable"
+          hint={`${error}. Start the API with Docker Compose, then refresh.`}
+        />
+      ) : null}
+
+      {!loading && !error ? (
+        <section className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {vendors.map((vendor, i) => (
+            <VendorCard
+              key={vendor.id}
+              vendor={vendor}
+              onNegotiate={setNegotiating}
+              animationDelayMs={i * 60}
+            />
+          ))}
+        </section>
+      ) : null}
+
+      {!loading && !error && vendors.length === 0 ? (
         <EmptyState
           emoji="🪔"
           title={`No ${CATEGORY_LABELS[category].replace(/^\S+\s/, "")} match this allocation yet.`}
@@ -91,6 +127,7 @@ export default function VendorsPage() {
 
       <NegotiationModal
         vendor={negotiating}
+        budgetTotal={budget}
         onClose={() => setNegotiating(null)}
       />
     </PageContainer>

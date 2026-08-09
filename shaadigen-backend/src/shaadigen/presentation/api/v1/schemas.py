@@ -4,7 +4,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
+from shaadigen.domain.entities.negotiation import NegotiationStatus
 from shaadigen.domain.entities.user import UserRole
+from shaadigen.domain.entities.vendor import PricingUnit, VendorCategory
 
 
 class HealthResponse(BaseModel):
@@ -45,3 +47,64 @@ class AuthTokenResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class PriceRangeSchema(BaseModel):
+    min: int
+    max: int
+
+
+class VendorResponse(BaseModel):
+    id: UUID
+    name: str
+    category: VendorCategory
+    location: str
+    priceRange: PriceRangeSchema
+    rating: float
+    reviewsCount: int
+    imageUrl: str
+    tags: list[str]
+    negotiatedDeal: str
+    pricingUnit: PricingUnit = PricingUnit.PACKAGE
+    isVerified: bool = True
+
+
+class VendorCategoryResponse(BaseModel):
+    key: VendorCategory
+    label: str
+    budgetShare: float
+    pricingUnit: PricingUnit
+
+
+class StartNegotiationRequest(BaseModel):
+    vendor_id: UUID
+    budget_total: int = Field(gt=0)
+    guest_count: int = Field(default=300, gt=0)
+
+
+class NegotiationJobResponse(BaseModel):
+    job_id: UUID
+    status: NegotiationStatus
+    vendor_id: UUID
+    perk_text: str | None = None
+    estimated_savings: int | None = None
+    counter_offer_amount: int | None = None
+    rfp_summary: str | None = None
+    error_message: str | None = None
+
+
+class AddShortlistRequest(BaseModel):
+    vendor_id: UUID
+    negotiation_job_id: UUID | None = None
+    notes: str | None = None
+
+
+class ShortlistItemResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    vendor_id: UUID
+    negotiation_job_id: UUID | None = None
+    notes: str | None = None
+    status: str
+    vendor: VendorResponse | None = None
+
